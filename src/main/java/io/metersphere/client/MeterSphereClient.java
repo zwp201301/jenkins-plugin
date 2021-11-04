@@ -143,8 +143,14 @@ public class MeterSphereClient {
             return jsonObject.getString("execResult");
         }
 
-
     }
+
+    public ResultHolder getTestPlanReportDetail(String reportId) {
+        String newReportId = reportId.replace("\"", "");
+        ResultHolder result = call(ApiUrlConstants.TEST_PLAN_REPORT_DETAIL + "/" + newReportId);
+        return result;
+    }
+
 
     public String getApiTestState(String reportId) {
         String newReportId = reportId.replace("\"", "");

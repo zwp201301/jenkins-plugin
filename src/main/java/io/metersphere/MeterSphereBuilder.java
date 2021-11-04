@@ -1,5 +1,6 @@
 package io.metersphere;
 
+import com.alibaba.fastjson.JSON;
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
@@ -18,6 +19,7 @@ import io.metersphere.commons.constants.Results;
 import io.metersphere.commons.exception.MeterSphereException;
 import io.metersphere.commons.model.*;
 import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.commons.utils.WebhookUtil;
 import jenkins.tasks.SimpleBuildStep;
 import net.sf.json.JSONObject;
 import org.apache.commons.collections.CollectionUtils;
@@ -51,12 +53,27 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
     private final String method;
     private final String result;
     private final String environmentId;
-    private final String mode;//运行模式
-    private final String runEnvironmentId;//运行环境
+    /**
+     * 运行模式
+     */
+    private final String mode;
+
+    /**
+     * 运行环境
+     */
+    private final String runEnvironmentId;
+
+    /**
+     * webhook回调地址
+     */
+    private final String callbackUrls;
 
 
     @DataBoundConstructor
-    public MeterSphereBuilder(String msEndpoint, String msAccessKey, String msSecretKey, String workspaceId, String orgId, String projectId, PrintStream logger, String testPlanId, String testCaseNodeId, String testId, String testCaseId, String method, String result, String environmentId, String mode, String runEnvironmentId) {
+    public MeterSphereBuilder(String msEndpoint, String msAccessKey, String msSecretKey, String workspaceId, String orgId,
+                              String projectId, PrintStream logger, String testPlanId, String testCaseNodeId,
+                              String testId, String testCaseId, String method, String result, String environmentId, String mode,
+                              String runEnvironmentId, String callbackUrls) {
         this.msEndpoint = msEndpoint;
         this.msAccessKey = msAccessKey;
         this.msSecretKey = msSecretKey;
@@ -73,6 +90,8 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
         this.environmentId = environmentId;
         this.mode = mode;
         this.runEnvironmentId = runEnvironmentId;
+
+        this.callbackUrls = callbackUrls;
     }
 
     @Override
@@ -81,6 +100,7 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
         listener.getLogger().println("workspace=" + workspace);
         listener.getLogger().println("number=" + run.getNumber());
         listener.getLogger().println("url=" + run.getUrl());
+
         final MeterSphereClient meterSphereClient = new MeterSphereClient(this.msAccessKey, this.msSecretKey, this.msEndpoint);
         log("执行方式" + method);
         try {
@@ -91,20 +111,31 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
                     log("生成测试报告id:" + id.replace('"', ' ').trim());
                     String url = meterSphereClient.getBaseInfo();
                     log("当前站点url:" + url);
+
+                    log("报告的回调地址:" + callbackUrls);
                     boolean flag = true;
                     while (flag) {
                         String status = meterSphereClient.getStatus(id);
                         if (status.replace('"', ' ').trim().equalsIgnoreCase(Results.SUCCESS)) {
                             flag = false;
+
+                            WebhookUtil.call(meterSphereClient, id, callbackUrls, workspace.getRemote());
+
                             log("该测试计划已完成");
                             log("点击链接进入测试计划报告页面:" + url + "/#/track/testPlan/reportList");
                         } else if (status.replace('"', ' ').trim().equalsIgnoreCase(Results.FAILED)) {
                             flag = false;
                             run.setResult(Result.FAILURE);
+
+                            WebhookUtil.call(meterSphereClient, id, callbackUrls, workspace.getRemote());
+
                             log("该测试计划失败");
                             log("点击链接进入测试计划报告页面:" + url + "/#/track/testPlan/reportList");
                         } else if (status.replace('"', ' ').trim().equalsIgnoreCase(Results.COMPLETED)) {
                             flag = false;
+
+                            WebhookUtil.call(meterSphereClient, id, callbackUrls, workspace.getRemote());
+
                             log("该测试计划已完成");
                             log("点击链接进入测试计划报告页面:" + url + "/#/track/testPlan/reportList");
                         }
@@ -129,6 +160,7 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
         }
 
     }
+
     public void getTestStepsBySingle(MeterSphereClient meterSphereClient, List<TestCaseDTO> testCaseIds, String environmentId, String projectId) {
         //log("testList=" + "[" + JSON.toJSONString(testCaseIds) + "]");
         log("testCaseId=" + "[" + testCaseId + "]");
@@ -329,7 +361,7 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
         return num;
     }
 
-
+    @Override
     public BuildStepMonitor getRequiredMonitorService() {
         return BuildStepMonitor.STEP;
     }
@@ -517,10 +549,12 @@ public class MeterSphereBuilder extends Builder implements SimpleBuildStep, Seri
             return super.configure(req, formData);
         }
 
+        @Override
         public boolean isApplicable(Class<? extends AbstractProject> aClass) {
             return true;
         }
 
+        @Override
         public String getDisplayName() {
             return "MeterSphere";
         }
