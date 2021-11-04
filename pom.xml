@@ -9,7 +9,7 @@
     </parent>
 
     <artifactId>metersphere-jenkins-plugin</artifactId>
-    <version>1.15.1</version>
+    <version>1.12</version>
     <packaging>hpi</packaging>
     <groupId>io.metersphere</groupId>
 
